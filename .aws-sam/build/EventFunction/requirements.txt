@@ -1,4 +1,0 @@
-requests
-flask-lambda-python36
-flask-cors
-boto3
