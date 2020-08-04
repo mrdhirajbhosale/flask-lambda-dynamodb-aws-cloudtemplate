@@ -81,8 +81,9 @@ Resources:
   EventFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: /api
+      CodeUri: api
       Handler: events_api.app
+      Runtime: python3.8
       Policies:
         - Version: "2012-10-17"
           Statement:
