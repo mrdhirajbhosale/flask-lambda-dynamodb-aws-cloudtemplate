@@ -1,0 +1,153 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: >
+
+Resources:
+  EventTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: Event-Dev
+      AttributeDefinitions:
+        - AttributeName: EventID
+          AttributeType: S
+        - AttributeName: DeviceID
+          AttributeType: S
+        - AttributeName: UserID
+          AttributeType: S
+        - AttributeName: EventDate
+          AttributeType: S
+      KeySchema:
+        - AttributeName: EventID
+          KeyType: HASH
+        - AttributeName: EventDate
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserID-EventDate-index
+          KeySchema:
+            - AttributeName: UserID
+              KeyType: HASH
+            - AttributeName: EventDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+        - IndexName: DeviceID-EventDate-index
+          KeySchema:
+            - AttributeName: DeviceID
+              KeyType: HASH
+            - AttributeName: EventDate
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: Event-UserPool
+      AutoVerifiedAttributes:
+        - email
+
+  UserPoolClient:
+    Type: "AWS::Cognito::UserPoolClient"
+    Properties:
+      ClientName: event-client
+      GenerateSecret: false
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - USER_PASSWORD_AUTH
+        - ADMIN_NO_SRP_AUTH
+
+  EventsApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: events-api
+      StageName: !Ref RealmName
+      Cors:
+        AllowMethods: "'*'"
+        AllowHeaders: "'*'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: False
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !GetAtt UserPool.Arn
+
+  EventFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: /api
+      Handler: events_api.app
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:GetItem"
+                - "dynamodb:Query"
+                - "dynamodb:Scan"
+                - "dynamodb:DeleteItem"
+                - "dynamodb:PutItem"
+                - "dynamodb:UpdateItem"
+              Resource:
+                - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/Event-*'
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref EventTable
+      Events:
+        GetEvents:
+          Type: Api
+          Properties:
+            Path: /events
+            RestApiId: !Ref EventsApi
+            Method: post
+
+        GetEvent:
+          Type: Api
+          Properties:
+            Path: /events/{id}/
+            RestApiId: !Ref EventsApi
+            Method: get
+
+        PutEvent:
+          Type: Api
+          Properties:
+            Path: /events
+            RestApiId: !Ref EventsApi
+            Method: put
+
+        PatchEvent:
+          Type: Api
+          Properties:
+            Path: /events/{id}/
+            RestApiId: !Ref EventsApi
+            Method: patch
+
+        DeleteEvent:
+          Type: Api
+          Properties:
+            Path: /events/{id}/
+            RestApiId: !Ref EventsApi
+            Method: delete
+
+        SearchEvents:
+          Type: Api
+          Properties:
+            Path: /events/search
+            RestApiId: !Ref EventsApi
+            Method: post
+
+Outputs:
+  # Find out more about other implicit resources you can reference within SAM
+  # https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-specification-generated-resources.html
+  EventApi:
+    Description: "API Gateway endpoint for events-api"
+    Value: !Sub "https://${EventsApi}.execute-api.${AWS::Region}.amazonaws.com/"
+  EventFunction:
+    Description: "events Lambda function ARN"
+    Value: !GetAtt EventFunction.Arn
